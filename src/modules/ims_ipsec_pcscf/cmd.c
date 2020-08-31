@@ -530,7 +530,7 @@ static int create_ipsec_tunnel(const struct ip_addr *remote_addr, ipsec_t *s)
 }
 
 static int destroy_ipsec_tunnel(
-		str remote_addr, ipsec_t *s, unsigned short received_port)
+		str remote_addr, ipsec_t *s, unsigned short received_port, int release_proxy_ports)
 {
 	struct mnl_socket *sock = init_mnl_socket();
 	if(sock == NULL) {
@@ -586,6 +586,7 @@ static int destroy_ipsec_tunnel(
 			s->spi_pc, ip_addr.af, IPSEC_POLICY_DIRECTION_IN);
 
 	// Release SPIs
+	// TODO: Only release the client and the server ports if flag release_proxy_ports is set
 	release_spi(s->spi_pc, s->spi_ps, s->port_pc, s->port_ps);
 
 	close_mnl_socket(sock);
@@ -612,7 +613,7 @@ void ipsec_on_expire(struct pcontact *c, int type, void *param)
 	}
 
 	destroy_ipsec_tunnel(
-			c->received_host, c->security_temp->data.ipsec, c->contact_port);
+			c->received_host, c->security_temp->data.ipsec, c->contact_port, 1);
 }
 
 int add_supported_secagree_header(struct sip_msg *m)
@@ -794,9 +795,16 @@ int ipsec_create(struct sip_msg *m, udomain_t *d, int _cflags)
 			    req_sec_params->data.ipsec->spi_uc != pcontact->security_temp->data.ipsec->spi_uc ||
 			    req_sec_params->data.ipsec->spi_us != pcontact->security_temp->data.ipsec->spi_us) {
 
-				// Backup the Proxy Server port
+				// Backup the Proxy Server and Client port - we re-use them
 				ipsec_t ipsec_ps;
 				ipsec_ps.port_ps = pcontact->security_temp->data.ipsec->port_ps;
+				ipsec_ps.port_pc = pcontact->security_temp->data.ipsec->port_pc;
+
+				// Destroy privously existing IPSec tunnels but dont release proxy ports
+			#if 0  // TODO: This code does not work anymore since acquiring proxy ports has significantly changed in Kamailio 5.7
+				destroy_ipsec_tunnel(ci.received_host,
+					pcontact->security_temp->data.ipsec, pcontact->contact_port, 0);
+			#endif
 
 				if(pcontact->security_temp->sec_header.s)
 					shm_free(pcontact->security_temp->sec_header.s);
@@ -830,7 +838,7 @@ int ipsec_create(struct sip_msg *m, udomain_t *d, int _cflags)
 
 				s = pcontact->security_temp->data.ipsec;
 
-				// Restore the backed up Proxy Server port
+				// Restore the backed up Proxy Server and Client port
 				if(update_contact_ipsec_params(s, m, &ipsec_ps) != 0) {
 					goto cleanup;
 				}
@@ -864,6 +872,10 @@ int ipsec_create(struct sip_msg *m, udomain_t *d, int _cflags)
 		if(update_contact_ipsec_params(s, m, old_s) != 0) {
 			goto cleanup;
 		}
+
+		// Restore Proxy Server and Client port
+		req_sec_params->data.ipsec->port_ps = pcontact->security_temp->data.ipsec->port_ps;
+		req_sec_params->data.ipsec->port_pc = pcontact->security_temp->data.ipsec->port_pc;
 	}
 
 	if(create_ipsec_tunnel(&req->rcv.src_ip, s) != 0) {
@@ -1164,9 +1176,7 @@ int ipsec_destroy(struct sip_msg *m, udomain_t *d)
 	}
 
 	destroy_ipsec_tunnel(ci.received_host, pcontact->security_temp->data.ipsec,
-			pcontact->contact_port);
-
-	ipsec_reconfig();
+			pcontact->contact_port, 1);
 
 	ret = IPSEC_CMD_SUCCESS; // all good, set ret to SUCCESS, and exit
 
@@ -1225,9 +1235,7 @@ int ipsec_destroy_by_contact(udomain_t* _d, str * uri, str * received_host, int 
         goto cleanup;
     }
 
-    destroy_ipsec_tunnel(search_ci.received_host, pcontact->security_temp->data.ipsec, pcontact->contact_port);
-
-    ipsec_reconfig();
+    destroy_ipsec_tunnel(search_ci.received_host, pcontact->security_temp->data.ipsec, pcontact->contact_port, 1);
 
     ret = IPSEC_CMD_SUCCESS;    // all good, set ret to SUCCESS, and exit
 

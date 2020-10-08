@@ -1027,8 +1027,12 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 			dst_port = s->port_us;
 		}
 	} else {
-		// for Request get the dest proto from the saved contact
-		dst_proto = pcontact->received_proto;
+		if (req->first_line.u.request.method_value == METHOD_REGISTER) {
+			// for Request get the dest proto from the saved contact
+			dst_proto = pcontact->received_proto;
+		} else {
+			dst_proto = m->rcv.proto;
+		}
 
 		if(_cflags & IPSEC_TCPPORT_UEC) {
 			// for Request and TCP sends from P-CSCF server port, for Request and UDP sends from P-CSCF client port

@@ -594,7 +594,7 @@ static int create_ipsec_tunnel(const struct ip_addr *remote_addr, ipsec_t *s)
 }
 
 static int destroy_ipsec_tunnel(
-		str remote_addr, ipsec_t *s, unsigned short received_port, int release_proxy_ports)
+		str remote_addr, ipsec_t *s, unsigned short received_port)
 {
 	struct mnl_socket *sock = init_mnl_socket();
 	if(sock == NULL) {
@@ -703,7 +703,7 @@ void ipsec_on_expire(struct pcontact *c, int type, void *param)
 	}
 
 	destroy_ipsec_tunnel(
-			c->received_host, c->security_temp->data.ipsec, c->contact_port, 1);
+			c->received_host, c->security_temp->data.ipsec, c->contact_port);
 }
 
 int add_supported_secagree_header(struct sip_msg *m)
@@ -891,10 +891,8 @@ int ipsec_create(struct sip_msg *m, udomain_t *d, int _cflags)
 				ipsec_ps.port_pc = pcontact->security_temp->data.ipsec->port_pc;
 
 				// Destroy privously existing IPSec tunnels but dont release proxy ports
-			#if 0  // TODO: This code does not work anymore since acquiring proxy ports has significantly changed in Kamailio 5.7
 				destroy_ipsec_tunnel(ci.received_host,
-					pcontact->security_temp->data.ipsec, pcontact->contact_port, 0);
-			#endif
+					pcontact->security_temp->data.ipsec, pcontact->contact_port);
 
 				if(pcontact->security_temp->sec_header.s)
 					shm_free(pcontact->security_temp->sec_header.s);
@@ -1270,7 +1268,7 @@ int ipsec_destroy(struct sip_msg *m, udomain_t *d)
 	}
 
 	destroy_ipsec_tunnel(ci.received_host, pcontact->security_temp->data.ipsec,
-			pcontact->contact_port, 1);
+			pcontact->contact_port);
 
 	ret = IPSEC_CMD_SUCCESS; // all good, set ret to SUCCESS, and exit
 
@@ -1329,7 +1327,7 @@ int ipsec_destroy_by_contact(udomain_t* _d, str * uri, str * received_host, int 
         goto cleanup;
     }
 
-    destroy_ipsec_tunnel(search_ci.received_host, pcontact->security_temp->data.ipsec, pcontact->contact_port, 1);
+    destroy_ipsec_tunnel(search_ci.received_host, pcontact->security_temp->data.ipsec, pcontact->contact_port);
 
     ret = IPSEC_CMD_SUCCESS;    // all good, set ret to SUCCESS, and exit
 

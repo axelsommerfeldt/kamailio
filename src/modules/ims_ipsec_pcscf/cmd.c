@@ -1027,6 +1027,7 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 	unsigned short dst_port = 0;
 	unsigned short src_port = 0;
 	ip_addr_t via_host;
+	struct via_body *vb;
 	struct sip_msg *req = NULL;
 	struct cell *t = NULL;
 	struct socket_info *client_sock = NULL;
@@ -1098,9 +1099,10 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 		m->dst_uri.len = 0;
 	}
 
+	vb = cscf_get_last_via(m);
+
 	if(m->first_line.type == SIP_REPLY) {
-		// for Reply get the dest proto from the received request
-		dst_proto = req->rcv.proto;
+		dst_proto = vb ? vb->proto : req->rcv.proto;
 
 		// for Reply and TCP sends from P-CSCF server port, for Reply and UDP sends from P-CSCF client port
 		src_port = dst_proto == PROTO_TCP ? s->port_ps : s->port_pc;
@@ -1121,7 +1123,7 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 			// for Request get the dest proto from the saved contact
 			dst_proto = pcontact->received_proto;
 		} else {
-			dst_proto = m->rcv.proto;
+			dst_proto = vb ? vb->proto : m->rcv.proto;
 		}
 
 		if(_cflags & IPSEC_TCPPORT_UEC) {
@@ -1145,6 +1147,9 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 		int buf_len;
 		if((_cflags & IPSEC_SETDSTURI_FULL) && (dst_proto == PROTO_TCP)) {
 			buf_len = snprintf(buf, sizeof(buf) - 1, "sip:%.*s:%d;transport=tcp",
+					ci.via_host.len, ci.via_host.s, dst_port);
+		} else if((_cflags & IPSEC_SETDSTURI_FULL) && (dst_proto == PROTO_TLS)) {
+			buf_len = snprintf(buf, sizeof(buf) - 1, "sip:%.*s:%d;transport=tls",
 					ci.via_host.len, ci.via_host.s, dst_port);
 		} else {
 			buf_len = snprintf(buf, sizeof(buf) - 1, "sip:%.*s:%d", ci.via_host.len,
@@ -1203,7 +1208,7 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 		t->uas.response.dst = dst_info;
 	}
 
-	LM_DBG("Destination changed to [%d://%.*s], from [%d:%d]\n", dst_info.proto,
+	LM_INFO("Destination changed to [%d://%.*s], from [%d:%d]\n", dst_info.proto,
 			m->dst_uri.len, m->dst_uri.s, dst_info.send_sock->proto,
 			dst_info.send_sock->port_no);
 

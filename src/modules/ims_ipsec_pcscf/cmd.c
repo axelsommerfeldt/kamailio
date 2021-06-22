@@ -1145,6 +1145,14 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 	if(!(_cflags & IPSEC_NODSTURI_RESET)) {
 		char buf[1024];
 		int buf_len;
+
+		// Try for send socket
+		client_sock = grep_sock_info(via_host.af == AF_INET ? &ipsec_listen_addr : &ipsec_listen_addr6, src_port, dst_proto);
+		if(!client_sock && dst_proto == PROTO_UDP) {
+			LM_ERR("UDP socket not found for IPSec forward, trying for TCP\n");
+			dst_proto = PROTO_TCP;
+		}
+
 		if((_cflags & IPSEC_SETDSTURI_FULL) && (dst_proto == PROTO_TCP)) {
 			buf_len = snprintf(buf, sizeof(buf) - 1, "sip:%.*s:%d;transport=tcp",
 					ci.via_host.len, ci.via_host.s, dst_port);

@@ -1092,13 +1092,6 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 	//    from URI
 	//int uri_len = 4 /* strlen("sip:") */ + ci.via_host.len + 5 /* max len of port number */ ;
 
-	if(!(_cflags & IPSEC_NODSTURI_RESET) && (m->dst_uri.s!=NULL)) {
-		LM_DBG("resetting dst uri [%.*s]\n", m->dst_uri.len, m->dst_uri.s);
-		pkg_free(m->dst_uri.s);
-		m->dst_uri.s = NULL;
-		m->dst_uri.len = 0;
-	}
-
 	vb = cscf_get_last_via(m);
 
 	if(m->first_line.type == SIP_REPLY) {
@@ -1122,8 +1115,16 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 		if (req->first_line.u.request.method_value == METHOD_REGISTER) {
 			// for Request get the dest proto from the saved contact
 			dst_proto = pcontact->received_proto;
+		} else if (m->dst_uri.s != NULL) {
+			if (strstr(m->dst_uri.s, ";transport=tcp") != NULL) {
+				dst_proto = PROTO_TCP;
+			} else if (strstr(m->dst_uri.s, ";transport=tls") != NULL) {
+				dst_proto = PROTO_TLS;
+			} else {
+				dst_proto = m->rcv.proto;
+			}
 		} else {
-			dst_proto = vb ? vb->proto : m->rcv.proto;
+			dst_proto = m->rcv.proto;
 		}
 
 		if(_cflags & IPSEC_TCPPORT_UEC) {
@@ -1164,6 +1165,13 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 					ci.via_host.s, dst_port);
 		}
 
+		if(m->dst_uri.s!=NULL) {
+			LM_DBG("resetting dst uri [%.*s]\n", m->dst_uri.len, m->dst_uri.s);
+			pkg_free(m->dst_uri.s);
+			m->dst_uri.s = NULL;
+			m->dst_uri.len = 0;
+		}
+
 		if((m->dst_uri.s = pkg_malloc(buf_len + 1)) == NULL) {
 			LM_ERR("Error allocating memory for dst_uri\n");
 			goto cleanup;
@@ -1189,11 +1197,16 @@ int ipsec_forward(struct sip_msg *m, udomain_t *d, int _cflags)
 	struct dest_info dst_info;
 	init_dest_info(&dst_info);
 	dst_info.send_sock = client_sock;
+#if 1
 	if(m->first_line.type == SIP_REQUEST
 			&& (_cflags & IPSEC_SEND_FORCE_SOCKET)) {
 		dst_info.send_flags.f |= SND_F_FORCE_SOCKET;
 		m->fwd_send_flags.f |= SND_F_FORCE_SOCKET;
 	}
+#else
+	// commit c08ae85661b35a93bf98d8112982e5fcf7ff1ae8 from https://github.com/herlesupreeth/kamailio
+	set_force_socket(m, client_sock);
+#endif
 #ifdef USE_DNS_FAILOVER
 	if(!uri2dst(NULL, &dst_info, m, &m->dst_uri, dst_proto)) {
 #else

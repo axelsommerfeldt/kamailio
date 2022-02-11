@@ -705,6 +705,8 @@ int tel2sip(struct sip_msg* _msg, char* _uri, char* _hostpart, char* _res)
         append_str(at, hostpart.s, hostpart.len);
         append_chr(at, ';');
         append_str(at, "user=phone", 10);
+        append_chr(at, '\0');
+        sip_uri.len = strlen(sip_uri.s);
 
         /* tel_uri is not needed anymore */
         pkg_free(tel_uri.s);
